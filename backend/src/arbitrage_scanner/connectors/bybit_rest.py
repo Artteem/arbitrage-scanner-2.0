@@ -43,18 +43,21 @@ async def _signed_get(
     if not creds:
         if provider:
             logger.debug("Bybit credentials missing, using public REST endpoints")
+        # ИСПРАВЛЕНИЕ: убран proxies из .get()
         return await client.get(url, params=params)
 
     query_params = dict(params or {})
     headers, _ = sign_request("bybit", "GET", path, query_params, None, creds)
     request_headers = dict(client.headers)
     request_headers.update(headers)
+    # ИСПРАВЛЕНИЕ: убран proxies из .get()
     response = await client.get(url, params=params, headers=request_headers)
     if response.status_code in {401, 403}:
         logger.warning(
             "Bybit authenticated request failed with %s, retrying without credentials",
             response.status_code,
         )
+        # ИСПРАВЛЕНИЕ: убран proxies из .get()
         return await client.get(url, params=params)
     return response
 
@@ -78,7 +81,13 @@ def _resolve_api_symbol(symbol: Symbol) -> str:
 
 async def get_bybit_contracts() -> List[ConnectorContract]:
     params = {"category": _CATEGORY, "limit": 1000}
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, proxies=_PROXIES) as client:
+    
+    # ИСПРАВЛЕНИЕ: Конструктор httpx.AsyncClient теперь условный
+    client_params = {"timeout": _DEFAULT_TIMEOUT}
+    if _PROXIES:
+        client_params["proxies"] = _PROXIES
+
+    async with httpx.AsyncClient(**client_params) as client:
         response = await _signed_get(client, _BYBIT_INSTRUMENTS, _PATH_INSTRUMENTS, params=params)
         response.raise_for_status()
         payload = response.json()
@@ -171,7 +180,12 @@ async def get_bybit_historical_quotes(
     }
     quotes: List[ConnectorQuote] = []
 
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, proxies=_PROXIES) as client:
+    # ИСПРАВЛЕНИЕ: Конструктор httpx.AsyncClient теперь условный
+    client_params = {"timeout": _DEFAULT_TIMEOUT}
+    if _PROXIES:
+        client_params["proxies"] = _PROXIES
+
+    async with httpx.AsyncClient(**client_params) as client:
         cursor = params["start"]
         while cursor < params["end"]:
             params["start"] = cursor
@@ -223,7 +237,12 @@ async def get_bybit_funding_history(
     }
     funding: List[ConnectorFundingRate] = []
 
-    async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT, proxies=_PROXIES) as client:
+    # ИСПРАВЛЕНИЕ: Конструктор httpx.AsyncClient теперь условный
+    client_params = {"timeout": _DEFAULT_TIMEOUT}
+    if _PROXIES:
+        client_params["proxies"] = _PROXIES
+
+    async with httpx.AsyncClient(**client_params) as client:
         cursor = params["start"]
         while cursor < params["end"]:
             params["start"] = cursor

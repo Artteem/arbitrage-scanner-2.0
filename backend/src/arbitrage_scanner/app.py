@@ -48,7 +48,7 @@ FALLBACK_SYMBOLS: list[Symbol] = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 FORCE_PERP = ("BTCUSDT", "ETHUSDT", "SOLUSDT")
 
 SPREAD_HISTORY = SpreadHistory(timeframes=(60, 300, 3600), max_candles=15000)
-SPREAD_REFRESH_INTERVAL = 0.1
+SPREAD_REFRESH_INTERVAL = 0.5
 SPREAD_EVENT: asyncio.Event = asyncio.Event()
 LAST_ROWS: list[Row] = []
 LAST_ROWS_TS: float = 0.0
@@ -223,10 +223,7 @@ async def startup():
     for connector in CONNECTORS:
         symbols_for_connector = CONNECTOR_SYMBOLS.get(connector.name) or SYMBOLS
         _tasks.append(asyncio.create_task(connector.run(store, symbols_for_connector)))
-    _tasks.append(asyncio.create_task(run_mexc(store, FORCE_PERP)))
-    _tasks.append(asyncio.create_task(run_gate(store, FORCE_PERP)))
-    _tasks.append(asyncio.create_task(run_bingx(store, FORCE_PERP)))
-    _tasks.append(asyncio.create_task(_spread_loop()))
+        _tasks.append(asyncio.create_task(_spread_loop()))
 
 
 @app.on_event("shutdown")
