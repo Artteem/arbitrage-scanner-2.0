@@ -1,0 +1,1582 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>—/— {{symbol}}</title>
+  <style>
+    :root { --bg:#0f1115; --fg:#e6e6e6; --muted:#9aa4ad; --row:#161a20; --accent:#4aa3ff; --bad:#ff5a5f; --good:#12d67a; --link:#7ab7ff; --border:#2a2f39; }
+    [data-theme="light"] { --bg:#fff; --fg:#0f172a; --muted:#4b5563; --row:#f8fafc; --accent:#0ea5e9; --bad:#ef4444; --good:#10b981; --link:#2563eb; --border:#e5e7eb; }
+    body { background:var(--bg); color:var(--fg); font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; margin:0; }
+    header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); }
+    h1 { font-size:18px; margin:0; }
+    a { color:var(--link); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .layout { padding:16px; display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+    .layout-left, .layout-right { display:flex; flex-direction:column; gap:16px; }
+    .layout-left { flex:1 1 480px; min-width:320px; }
+    .layout-right { flex:1 1 420px; min-width:320px; }
+    .controls { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+    .badge { font-size:13px; color:var(--muted); }
+    button, select { padding:6px 10px; border:1px solid var(--border); background:transparent; color:var(--fg); border-radius:6px; cursor:pointer; }
+    button:hover, select:hover { border-color:var(--accent); }
+    label { font-size:14px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+    input[type="checkbox"] { accent-color:var(--accent); }
+    input[type="number"] { padding:6px 8px; border:1px solid var(--border); background:transparent; color:var(--fg); border-radius:6px; }
+    input[type="number"]:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+    .chart-card { background:var(--row); border:1px solid var(--border); border-radius:10px; padding:12px; }
+    .chart-card h2 { margin:0 0 8px 0; font-size:16px; font-weight:600; }
+    .chart-container { height:340px; position:relative; }
+    .empty { font-size:14px; color:var(--muted); padding:32px 0; text-align:center; }
+    .exchange-line { display:flex; flex-wrap:wrap; gap:12px; font-size:14px; }
+    .exchange-line span { display:flex; align-items:center; gap:4px; }
+    .hidden { display:none; }
+    .summary { display:flex; flex-direction:column; gap:16px; }
+    .summary-controls { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end; }
+    .volume-input { display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:13px; }
+    .volume-input input { width:160px; font-size:15px; color:var(--fg); }
+    .metrics-grid { display:flex; flex-wrap:wrap; gap:12px; }
+    .metric-card { background:var(--row); border:1px solid var(--border); border-radius:10px; padding:12px 14px; min-width:160px; }
+    .metric-label { font-size:13px; color:var(--muted); }
+    .metric-value { font-size:20px; font-weight:600; }
+    .metric-sub { font-size:13px; color:var(--muted); margin-top:4px; }
+    .metric-pos { color:var(--good); }
+    .metric-neg { color:var(--bad); }
+    .exchanges-grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); }
+    .exchange-card { background:var(--row); border:1px solid var(--border); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:10px; }
+    .exchange-card-header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .exchange-card-header h3 { margin:0; font-size:16px; font-weight:600; }
+    .exchange-meta { font-size:13px; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .orderbook { display:flex; flex-direction:column; gap:8px; font-family:var(--mono, "JetBrains Mono", "Fira Mono", monospace); font-size:13px; }
+    .orderbook .asks, .orderbook .bids { display:flex; flex-direction:column; gap:4px; }
+    .orderbook .asks { flex-direction:column-reverse; }
+    .orderbook .level { display:flex; justify-content:space-between; gap:12px; }
+    .orderbook .asks .level { color:var(--bad); }
+    .orderbook .bids .level { color:var(--good); }
+    .orderbook .level span { display:inline-flex; align-items:center; }
+    .orderbook .level .volume { color:var(--muted); font-size:12px; margin-left:auto; text-align:right; }
+    .orderbook .mid { display:flex; flex-direction:column; justify-content:center; align-items:center; font-weight:600; font-size:14px; gap:4px; padding:4px 0; border-top:1px dashed var(--border); border-bottom:1px dashed var(--border); }
+    .orderbook .mid span { color:var(--muted); font-size:12px; font-weight:400; }
+    .orderbook-empty { font-size:13px; color:var(--muted); text-align:center; padding:12px; border:1px dashed var(--border); border-radius:8px; }
+  </style>
+  <script src="https://unpkg.com/lightweight-charts@4.0.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body data-symbol="{{symbol}}">
+  <header>
+    <div>
+      <div class="badge"><a href="/ui">← Назад к таблице</a></div>
+      <h1>{{symbol}}</h1>
+    </div>
+    <div class="controls">
+      <button id="theme-toggle" type="button">Светлая/Тёмная</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <div class="layout-left">
+      <section class="controls">
+        <label>Таймфрейм
+          <select id="timeframe">
+            <option value="1m">1 мин</option>
+            <option value="5m" selected>5 мин</option>
+            <option value="1h">1 час</option>
+          </select>
+        </label>
+        <button id="reverse-btn" type="button">Перевернуть график</button>
+        <label><input type="checkbox" id="exit-toggle"/> Отобразить график выхода</label>
+      </section>
+
+      <section class="chart-card">
+        <h2>Вход %</h2>
+        <div id="entry-chart" class="chart-container"></div>
+        <div id="entry-empty" class="empty hidden">Нет данных для выбранной комбинации</div>
+      </section>
+
+      <section id="exit-card" class="chart-card hidden">
+        <h2>Выход %</h2>
+        <div id="exit-chart" class="chart-container"></div>
+        <div id="exit-empty" class="empty hidden">Нет данных для выбранной комбинации</div>
+      </section>
+    </div>
+
+    <div class="layout-right">
+      <section class="summary">
+        <div class="summary-controls">
+          <label class="volume-input">Объём сделки, USDT
+            <input id="volume-input" type="number" min="0" step="10" value="100"/>
+          </label>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-label">Вход</div>
+              <div class="metric-value" id="metric-entry">—</div>
+              <div class="metric-sub" id="metric-entry-usd">—</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Выход</div>
+              <div class="metric-value" id="metric-exit">—</div>
+              <div class="metric-sub" id="metric-exit-usd">—</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Спред фандинга</div>
+              <div class="metric-value" id="metric-funding">—</div>
+              <div class="metric-sub" id="metric-funding-usd">—</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Комиссии</div>
+              <div class="metric-value" id="metric-fees">—</div>
+              <div class="metric-sub" id="metric-fees-usd">—</div>
+            </div>
+          </div>
+        </div>
+        <section class="exchange-line" id="exchange-line"></section>
+        <div class="exchanges-grid">
+          <div class="exchange-card" id="long-card">
+            <div class="exchange-card-header">
+              <h3>LONG</h3>
+              <a id="long-link" href="#" target="_blank" rel="noopener">—</a>
+            </div>
+            <div class="exchange-meta">
+              <div id="long-funding">Фандинг: —</div>
+              <div id="long-limit">Лимит: —</div>
+            </div>
+            <div class="orderbook" id="long-orderbook">
+              <div class="asks" id="long-asks"></div>
+              <div class="mid" id="long-mid">
+                <div id="long-last-price">—</div>
+                <span>посл. сделка</span>
+              </div>
+              <div class="bids" id="long-bids"></div>
+            </div>
+            <div class="orderbook-empty hidden" id="long-orderbook-empty">Стакан недоступен</div>
+          </div>
+          <div class="exchange-card" id="short-card">
+            <div class="exchange-card-header">
+              <h3>SHORT</h3>
+              <a id="short-link" href="#" target="_blank" rel="noopener">—</a>
+            </div>
+            <div class="exchange-meta">
+              <div id="short-funding">Фандинг: —</div>
+              <div id="short-limit">Лимит: —</div>
+            </div>
+            <div class="orderbook" id="short-orderbook">
+              <div class="asks" id="short-asks"></div>
+              <div class="mid" id="short-mid">
+                <div id="short-last-price">—</div>
+                <span>посл. сделка</span>
+              </div>
+              <div class="bids" id="short-bids"></div>
+            </div>
+            <div class="orderbook-empty hidden" id="short-orderbook-empty">Стакан недоступен</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const symbol = document.body.dataset.symbol;
+    const LOOKBACK_DAYS = 10;
+    const LOOKBACK_SECONDS = LOOKBACK_DAYS * 86400;
+    const TIMEFRAME_SECONDS = { '1m': 60, '5m': 300, '1h': 3600 };
+    const FALLBACK_INTERVAL_MS = 750;
+    const STALE_THRESHOLD_MS = 900;
+    const timeframeSelect = document.getElementById('timeframe');
+    const reverseBtn = document.getElementById('reverse-btn');
+    const exitToggle = document.getElementById('exit-toggle');
+    const exchangeLine = document.getElementById('exchange-line');
+    const entryEmpty = document.getElementById('entry-empty');
+    const exitEmpty = document.getElementById('exit-empty');
+    const exitCard = document.getElementById('exit-card');
+    const volumeInput = document.getElementById('volume-input');
+    const metricEntry = document.getElementById('metric-entry');
+    const metricEntryUsd = document.getElementById('metric-entry-usd');
+    const metricExit = document.getElementById('metric-exit');
+    const metricExitUsd = document.getElementById('metric-exit-usd');
+    const metricFunding = document.getElementById('metric-funding');
+    const metricFundingUsd = document.getElementById('metric-funding-usd');
+    const metricFees = document.getElementById('metric-fees');
+    const metricFeesUsd = document.getElementById('metric-fees-usd');
+    const longLink = document.getElementById('long-link');
+    const shortLink = document.getElementById('short-link');
+    const longFundingMeta = document.getElementById('long-funding');
+    const shortFundingMeta = document.getElementById('short-funding');
+    const longLimitMeta = document.getElementById('long-limit');
+    const shortLimitMeta = document.getElementById('short-limit');
+    const longAsksEl = document.getElementById('long-asks');
+    const longBidsEl = document.getElementById('long-bids');
+    const shortAsksEl = document.getElementById('short-asks');
+    const shortBidsEl = document.getElementById('short-bids');
+    const longOrderbookEl = document.getElementById('long-orderbook');
+    const shortOrderbookEl = document.getElementById('short-orderbook');
+    const longOrderbookEmpty = document.getElementById('long-orderbook-empty');
+    const shortOrderbookEmpty = document.getElementById('short-orderbook-empty');
+    const longLastPriceEl = document.getElementById('long-last-price');
+    const shortLastPriceEl = document.getElementById('short-last-price');
+
+    const symbolUpper = symbol.toUpperCase();
+
+    let longExchange = null;
+    let shortExchange = null;
+    let overviewRows = [];
+    let currentRow = null;
+    let currentLimits = { long: null, short: null };
+    let latestMetrics = null;
+    let fallbackTimer = null;
+    let fallbackFetchPromise = null;
+    let lastRealtimeUpdate = 0;
+    function normalizeExchangeName(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function normalizeSymbolKey(value) {
+      return String(value || '')
+        .replace(/[^a-z0-9]/gi, '')
+        .toUpperCase();
+    }
+
+    function rowLongExchange(row) {
+      if (!row) return '';
+      return normalizeExchangeName(row.long_exchange || row.long_ex || row.long);
+    }
+
+    function rowShortExchange(row) {
+      if (!row) return '';
+      return normalizeExchangeName(row.short_exchange || row.short_ex || row.short);
+    }
+
+    function rowsMatch(a, b) {
+      if (!a || !b) return false;
+      return rowLongExchange(a) === rowLongExchange(b) && rowShortExchange(a) === rowShortExchange(b);
+    }
+
+    function findOverviewRow() {
+      if (!Array.isArray(overviewRows) || overviewRows.length === 0) return null;
+      const long = normalizeExchangeName(longExchange);
+      const short = normalizeExchangeName(shortExchange);
+      return overviewRows.find(row => rowLongExchange(row) === long && rowShortExchange(row) === short) || null;
+    }
+
+    function normalizeRealtimeRow(row) {
+      if (!row) return null;
+      if (row.__normalized) {
+        return row;
+      }
+      const next = { ...row };
+      next.symbol = symbolUpper;
+      const longKey = rowLongExchange(row);
+      const shortKey = rowShortExchange(row);
+      if (!longKey || !shortKey) {
+        return null;
+      }
+      next.long_exchange = longKey;
+      next.long_ex = longKey;
+      next.long = longKey;
+      next.short_exchange = shortKey;
+      next.short_ex = shortKey;
+      next.short = shortKey;
+      Object.defineProperty(next, '__normalized', {
+        value: true,
+        enumerable: false,
+        configurable: false,
+      });
+      return next;
+    }
+
+    function mergeOverviewRow(row) {
+      if (!row) return null;
+      const normalized = normalizeRealtimeRow(row);
+      if (!normalized) return null;
+      const longKey = rowLongExchange(normalized);
+      const shortKey = rowShortExchange(normalized);
+      const existingIndex = overviewRows.findIndex(
+        (candidate) => rowLongExchange(candidate) === longKey && rowShortExchange(candidate) === shortKey,
+      );
+      const nextRow = normalized;
+      if (existingIndex >= 0) {
+        const merged = { ...overviewRows[existingIndex], ...nextRow };
+        overviewRows[existingIndex] = merged;
+        return merged;
+      } else {
+        overviewRows.push(nextRow);
+        return nextRow;
+      }
+    }
+
+    function markRealtimeUpdate() {
+      lastRealtimeUpdate = Date.now();
+    }
+
+    function syncCurrentRow(force = false) {
+      const candidate = findOverviewRow();
+      if (!candidate) {
+        return;
+      }
+      if (force || !currentRow || !rowsMatch(currentRow, candidate)) {
+        currentRow = candidate;
+      }
+    }
+
+    function applyRealtimeRow(row, tsOverride) {
+      if (!row || !longExchange || !shortExchange) return false;
+      const incomingSymbol = normalizeSymbolKey(row.symbol || symbolUpper || '');
+      const expectedSymbol = normalizeSymbolKey(symbolUpper);
+      if (incomingSymbol && incomingSymbol !== expectedSymbol) return false;
+      const normalized = normalizeRealtimeRow(row);
+      if (!normalized) return false;
+      const expectedLong = normalizeExchangeName(longExchange);
+      const expectedShort = normalizeExchangeName(shortExchange);
+      const rowLong = rowLongExchange(normalized);
+      const rowShort = rowShortExchange(normalized);
+      if (!rowLong || !rowShort) return false;
+      if (rowLong !== expectedLong || rowShort !== expectedShort) return false;
+      const merged = mergeOverviewRow(normalized) || normalized;
+      currentRow = merged;
+      syncCurrentRow(true);
+      const activeRow = currentRow || merged;
+      const ts = Number(tsOverride ?? normalized._ts ?? normalized.ts ?? Date.now() / 1000);
+      const entryValue = Number(normalized.entry_pct ?? activeRow.entry_pct);
+      if (Number.isFinite(entryValue)) {
+        entryState.appendLive(entryValue, ts);
+      }
+      const exitCandidate = typeof normalized.exit_pct !== 'undefined' ? normalized.exit_pct : activeRow.exit_pct;
+      const exitValue = Number(exitCandidate);
+      if (Number.isFinite(exitValue)) {
+        exitState.appendLive(exitValue, ts);
+      }
+      updateSummary();
+      markRealtimeUpdate();
+      return true;
+    }
+
+    function ensureFallbackLoop() {
+      if (fallbackTimer) return;
+      fallbackTimer = setInterval(() => {
+        if (!longExchange || !shortExchange) return;
+        if (fallbackFetchPromise) return;
+        const staleFor = Date.now() - lastRealtimeUpdate;
+        if (staleFor < STALE_THRESHOLD_MS) {
+          return;
+        }
+        fetchRealtimeSnapshot();
+      }, FALLBACK_INTERVAL_MS);
+    }
+
+    async function fetchRealtimeSnapshot(force = false) {
+      if (!longExchange || !shortExchange) return;
+      if (!force && fallbackFetchPromise) {
+        return fallbackFetchPromise;
+      }
+      const params = new URLSearchParams({
+        long: longExchange,
+        short: shortExchange,
+        _t: String(Date.now()),
+      });
+      const request = (async () => {
+        try {
+          const res = await fetch(`/api/pair/${encodeURIComponent(symbol)}/realtime?${params.toString()}`, {
+            cache: 'no-store',
+          });
+          if (!res.ok) {
+            lastRealtimeUpdate = 0;
+            return;
+          }
+          const data = await res.json();
+          if (!data || !data.row) {
+            lastRealtimeUpdate = 0;
+            return;
+          }
+          const ts = Number(data.ts ?? data.row?._ts ?? Date.now() / 1000);
+          const payload = { ...data.row, _ts: ts };
+          applyRealtimeRow(payload, ts);
+        } catch (err) {
+          // ignore network errors in fallback fetches
+          lastRealtimeUpdate = 0;
+        }
+      })();
+      if (force) {
+        return request;
+      }
+      fallbackFetchPromise = request.finally(() => {
+        fallbackFetchPromise = null;
+      });
+      return fallbackFetchPromise;
+    }
+
+    const entryState = createChartState({
+      containerId: 'entry-chart',
+      emptyEl: entryEmpty,
+      isActive: () => true,
+    });
+    const exitState = createChartState({
+      containerId: 'exit-chart',
+      emptyEl: exitEmpty,
+      isActive: () => exitToggle.checked,
+    });
+    let realtimeSocket = null;
+    let realtimeReconnect = null;
+    let realtimeKey = null;
+
+    function cssVar(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function currentTimeframeSeconds() {
+      const key = timeframeSelect.value;
+      return TIMEFRAME_SECONDS[key] || 300;
+    }
+
+    function formatTimeTick(time) {
+      if (typeof time === 'object' && time !== null && 'year' in time) {
+        const day = String(time.day).padStart(2, '0');
+        const month = String(time.month).padStart(2, '0');
+        return `${day}.${month}`;
+      }
+      if (typeof time !== 'number') return '';
+      const date = new Date(time * 1000);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${day}.${month} ${hours}:${minutes}`;
+    }
+
+    function timeframeHasSeconds() {
+      return timeframeSelect.value === '1m';
+    }
+
+    function initChart(container) {
+      if (!window.LightweightCharts) {
+        return null;
+      }
+      const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: container.clientHeight,
+        layout: {
+          background: { color: cssVar('--row') },
+          textColor: cssVar('--fg'),
+        },
+        grid: {
+          vertLines: { color: cssVar('--border') },
+          horzLines: { color: cssVar('--border') },
+        },
+        rightPriceScale: { borderColor: cssVar('--border'), scaleMargins: { top: 0.05, bottom: 0.05 } },
+        timeScale: {
+          borderColor: cssVar('--border'),
+          timeVisible: true,
+          secondsVisible: timeframeHasSeconds(),
+          tickMarkFormatter: formatTimeTick,
+        },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      });
+      const series = chart.addCandlestickSeries({
+        upColor: cssVar('--good'),
+        downColor: cssVar('--bad'),
+        borderUpColor: cssVar('--good'),
+        borderDownColor: cssVar('--bad'),
+        wickUpColor: cssVar('--good'),
+        wickDownColor: cssVar('--bad'),
+      });
+      const zeroLine = series.createPriceLine({
+        price: 0,
+        color: cssVar('--fg'),
+        lineWidth: 2,
+        lineStyle: LightweightCharts.LineStyle.Solid,
+        axisLabelVisible: true,
+        title: '0'
+      });
+      const resizeObserver = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          const { width, height } = entry.contentRect;
+          chart.applyOptions({ width, height });
+        }
+      });
+      resizeObserver.observe(container);
+      return { chart, series, zeroLine };
+    }
+
+    function applyTimeScaleOptions(chart) {
+      if (!chart) return;
+      chart.applyOptions({
+        timeScale: {
+          borderColor: cssVar('--border'),
+          timeVisible: true,
+          secondsVisible: timeframeHasSeconds(),
+          tickMarkFormatter: formatTimeTick,
+        }
+      });
+    }
+
+    function applyZeroCenteredScale(series, data) {
+      if (!series) return;
+      const priceScale = series.priceScale();
+      if (!priceScale) return;
+      if (!data || data.length === 0) {
+        priceScale.applyOptions({ autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 } });
+        if (typeof priceScale.setPriceRange === 'function') {
+          priceScale.setPriceRange(null);
+        }
+        return;
+      }
+      const values = [];
+      data.forEach(c => {
+        values.push(Math.abs(c.open));
+        values.push(Math.abs(c.high));
+        values.push(Math.abs(c.low));
+        values.push(Math.abs(c.close));
+      });
+      const maxAbs = values.reduce((acc, val) => Math.max(acc, val), 0);
+      const span = maxAbs > 0 ? maxAbs : 1;
+      priceScale.applyOptions({ autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } });
+      priceScale.setPriceRange({ minValue: -span, maxValue: span });
+    }
+
+    function createChartState({ containerId, emptyEl, isActive }) {
+      const state = {
+        container: document.getElementById(containerId),
+        emptyEl,
+        chart: null,
+        series: null,
+        zeroLine: null,
+        data: [],
+        isActive: typeof isActive === 'function' ? isActive : () => true,
+        ensureChart() {
+          if (this.chart) {
+            return true;
+          }
+          const res = initChart(this.container);
+          if (!res) {
+            return false;
+          }
+          this.chart = res.chart;
+          this.series = res.series;
+          this.zeroLine = res.zeroLine;
+          if (this.data.length > 0) {
+            this.applyFullData();
+          } else {
+            this.updateEmpty();
+          }
+          return true;
+        },
+        activate() {
+          if (!this.ensureChart()) {
+            return;
+          }
+          if (this.data.length > 0) {
+            this.applyFullData();
+          } else {
+            this.updateEmpty();
+          }
+        },
+        applyFullData() {
+          if (this.series) {
+            this.series.setData(this.data);
+            applyZeroCenteredScale(this.series, this.data);
+          }
+          if (this.chart) {
+            applyTimeScaleOptions(this.chart);
+            const scale = this.chart.timeScale();
+            if (scale) {
+              if (this.data.length > 1 && typeof scale.setVisibleRange === 'function') {
+                scale.setVisibleRange({ from: this.data[0].time, to: this.data[this.data.length - 1].time });
+              } else if (typeof scale.fitContent === 'function') {
+                scale.fitContent();
+              }
+            }
+          }
+          this.updateEmpty();
+        },
+        setData(data) {
+          this.data = sortCandles(data);
+          this.applyFullData();
+        },
+        mergeData(data) {
+          this.data = sortCandles(mergeCandles(data, this.data));
+          this.applyFullData();
+        },
+        appendLive(value, ts) {
+          if (!Number.isFinite(value) || !Number.isFinite(ts)) return;
+          const tfSeconds = currentTimeframeSeconds();
+          const bucket = Math.floor(ts / tfSeconds) * tfSeconds;
+          let last = this.data[this.data.length - 1];
+          if (!last || last.time !== bucket) {
+            last = { time: bucket, open: value, high: value, low: value, close: value };
+            this.data.push(last);
+          } else {
+            last = {
+              time: bucket,
+              open: last.open,
+              high: Math.max(last.high, value),
+              low: Math.min(last.low, value),
+              close: value,
+            };
+            this.data[this.data.length - 1] = last;
+          }
+          const dropped = pruneBuffer(this.data);
+          const active = this.isActive();
+          if (active && !this.chart) {
+            this.ensureChart();
+          }
+          if (active && this.series) {
+            if (dropped > 0) {
+              this.series.setData(this.data);
+            } else {
+              this.series.update(last);
+            }
+            applyZeroCenteredScale(this.series, this.data);
+          }
+          if (active && this.chart) {
+            applyTimeScaleOptions(this.chart);
+            const scale = this.chart.timeScale();
+            if (scale) {
+              if (dropped > 0) {
+                if (this.data.length > 1 && typeof scale.setVisibleRange === 'function') {
+                  scale.setVisibleRange({ from: this.data[0].time, to: this.data[this.data.length - 1].time });
+                } else if (typeof scale.fitContent === 'function') {
+                  scale.fitContent();
+                }
+              }
+              if (typeof scale.scrollToRealTime === 'function') {
+                scale.scrollToRealTime();
+              }
+            }
+          }
+          this.updateEmpty();
+        },
+        clear() {
+          this.data = [];
+          if (this.series) {
+            this.series.setData([]);
+            applyZeroCenteredScale(this.series, this.data);
+          }
+          if (this.chart) {
+            applyTimeScaleOptions(this.chart);
+            const scale = this.chart.timeScale();
+            if (scale && typeof scale.fitContent === 'function') {
+              scale.fitContent();
+            }
+          }
+          this.updateEmpty();
+        },
+        updateEmpty() {
+          if (!this.emptyEl) return;
+          const isEmpty = !this.data || this.data.length === 0;
+          showEmpty(this.emptyEl, isEmpty);
+        },
+        applyTheme() {
+          if (this.chart) {
+            this.chart.applyOptions({
+              layout: {
+                background: { color: cssVar('--row') },
+                textColor: cssVar('--fg'),
+              },
+              grid: {
+                vertLines: { color: cssVar('--border') },
+                horzLines: { color: cssVar('--border') },
+              },
+              rightPriceScale: { borderColor: cssVar('--border') },
+              timeScale: { borderColor: cssVar('--border') },
+            });
+          }
+          const seriesOptions = {
+            upColor: cssVar('--good'),
+            downColor: cssVar('--bad'),
+            borderUpColor: cssVar('--good'),
+            borderDownColor: cssVar('--bad'),
+            wickUpColor: cssVar('--good'),
+            wickDownColor: cssVar('--bad'),
+          };
+          if (this.series) {
+            this.series.applyOptions(seriesOptions);
+          }
+          if (this.zeroLine) {
+            this.zeroLine.applyOptions({ color: cssVar('--fg') });
+          }
+        }
+      };
+      return state;
+    }
+
+    function updateExchangeInfo() {
+      const parts = [];
+      if (longExchange) {
+        parts.push(`<span><strong>LONG:</strong> ${longExchange.toUpperCase()}</span>`);
+      }
+      if (shortExchange) {
+        parts.push(`<span><strong>SHORT:</strong> ${shortExchange.toUpperCase()}</span>`);
+      }
+      exchangeLine.innerHTML = parts.join(' ');
+      const longText = longExchange ? longExchange.toUpperCase() : '—';
+      const shortText = shortExchange ? shortExchange.toUpperCase() : '—';
+      longLink.textContent = longText;
+      longLink.href = longExchange ? exchangeUrl(longExchange, symbolUpper) : '#';
+      shortLink.textContent = shortText;
+      shortLink.href = shortExchange ? exchangeUrl(shortExchange, symbolUpper) : '#';
+      syncCurrentRow();
+      updateSummary();
+    }
+
+    function updateUrl() {
+      const params = new URLSearchParams();
+      if (longExchange) params.set('long', longExchange);
+      if (shortExchange) params.set('short', shortExchange);
+      params.set('tf', timeframeSelect.value);
+      const qs = params.toString();
+      const next = qs ? `${location.pathname}?${qs}` : location.pathname;
+      history.replaceState(null, '', next);
+    }
+
+    function showEmpty(target, isEmpty) {
+      target.classList.toggle('hidden', !isEmpty);
+    }
+
+    async function fetchOverview() {
+      try {
+        const res = await fetch(`/api/pair/${encodeURIComponent(symbol)}/overview`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        overviewRows = rows
+          .map(normalizeRealtimeRow)
+          .filter(Boolean);
+        syncCurrentRow();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function ensureDefaultExchanges() {
+      const params = new URLSearchParams(location.search);
+      const qLong = params.get('long');
+      const qShort = params.get('short');
+      const tf = params.get('tf');
+      if (tf && ['1m','5m','1h'].includes(tf)) {
+        timeframeSelect.value = tf;
+      }
+      if (qLong && qShort) {
+        longExchange = qLong.toLowerCase();
+        shortExchange = qShort.toLowerCase();
+      }
+      if (!longExchange || !shortExchange) {
+        if (overviewRows.length > 0) {
+          const best = overviewRows[0];
+          const longCandidate = best.long_exchange || best.long;
+          const shortCandidate = best.short_exchange || best.short;
+          if (longCandidate) longExchange = String(longCandidate).toLowerCase();
+          if (shortCandidate) shortExchange = String(shortCandidate).toLowerCase();
+        }
+      }
+      updateExchangeInfo();
+      updateUrl();
+      syncCurrentRow(true);
+      updateSummary();
+    }
+
+    function ensureRealtimeSocket(force = false) {
+      if (!longExchange || !shortExchange) return;
+      const nextKey = `${symbolUpper}:${longExchange}:${shortExchange}`;
+      if (!force && realtimeSocket && realtimeSocket.readyState <= 1 && realtimeKey === nextKey) {
+        return;
+      }
+      realtimeKey = nextKey;
+      if (realtimeSocket) {
+        try { realtimeSocket.close(); } catch (_) {}
+        realtimeSocket = null;
+      }
+      if (realtimeReconnect) {
+        clearTimeout(realtimeReconnect);
+        realtimeReconnect = null;
+      }
+      const params = new URLSearchParams({
+        symbol: symbolUpper,
+        long: longExchange,
+        short: shortExchange,
+      });
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      realtimeSocket = new WebSocket(`${proto}://${location.host}/ws/spreads?${params.toString()}`);
+      realtimeSocket.onopen = () => {
+        markRealtimeUpdate();
+      };
+      realtimeSocket.onmessage = (event) => {
+        handleRealtimeMessage(event.data);
+      };
+      realtimeSocket.onerror = () => {
+        try { realtimeSocket.close(); } catch (_) {}
+      };
+      realtimeSocket.onclose = () => {
+        realtimeSocket = null;
+        lastRealtimeUpdate = 0;
+        if (!realtimeReconnect) {
+          realtimeReconnect = setTimeout(() => ensureRealtimeSocket(true), 1200);
+        }
+      };
+    }
+
+    function exchangeUrl(ex, sym) {
+      switch ((ex || '').toLowerCase()) {
+        case 'binance':
+          return `https://www.binance.com/en/futures/${sym}`;
+        case 'bybit':
+          return `https://www.bybit.com/trade/usdt/${sym}`;
+        case 'mexc':
+          return `https://futures.mexc.com/exchange/${toMexcSymbol(sym)}`;
+        case 'bingx':
+          return `https://bingx.com/en-us/futures/${toBingxSymbol(sym)}`;
+        default:
+          return '#';
+      }
+    }
+
+    function toMexcSymbol(sym) {
+      if (!sym) return sym;
+      if (sym.includes('_')) return sym;
+      return sym.endsWith('USDT') ? `${sym.slice(0, -4)}_USDT` : sym;
+    }
+
+    function toBingxSymbol(sym) {
+      if (!sym) return sym;
+      const upper = sym.toUpperCase();
+      const quotes = ['USDT', 'USDC', 'USD', 'BUSD', 'FDUSD'];
+      const quote = quotes.find(q => upper.endsWith(q));
+      if (!quote) return upper;
+      const base = upper.slice(0, -quote.length);
+      return `${base}-${quote}`;
+    }
+
+    function baseSymbol() {
+      const quotes = ['USDT', 'USDC', 'USD', 'BUSD', 'FDUSD'];
+      for (const quote of quotes) {
+        if (symbolUpper.endsWith(quote)) {
+          return symbolUpper.slice(0, -quote.length);
+        }
+      }
+      return symbolUpper;
+    }
+
+    function roundToTwo(value) {
+      if (!Number.isFinite(value)) return null;
+      const rounded = Math.round(value * 100) / 100;
+      return Object.is(rounded, -0) ? 0 : rounded;
+    }
+
+    function formatPercent(value) {
+      const rounded = roundToTwo(value);
+      if (rounded === null) return '—';
+      const fixed = Math.abs(rounded).toFixed(2);
+      const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : '';
+      return `${sign}${fixed}%`;
+    }
+
+    function formatUsd(value) {
+      const rounded = roundToTwo(value);
+      if (rounded === null) return '—';
+      const fixed = Math.abs(rounded).toFixed(2);
+      const sign = rounded > 0 ? '+' : rounded < 0 ? '-' : '';
+      return `${sign}${fixed} USDT`;
+    }
+
+    function formatPlainTwo(value) {
+      const rounded = roundToTwo(value);
+      if (rounded === null) return '—';
+      return rounded.toFixed(2);
+    }
+
+    function formatNumber(value) {
+      if (!Number.isFinite(value)) return null;
+      const abs = Math.abs(value);
+      const digits = abs < 1 ? 4 : 2;
+      return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: digits }).format(value);
+    }
+
+    function formatPrice(value) {
+      if (!Number.isFinite(value)) return '—';
+      const abs = Math.abs(value);
+      let digits = 4;
+      if (abs >= 1000) digits = 2;
+      else if (abs >= 100) digits = 3;
+      else if (abs < 1) digits = 6;
+      return value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    }
+
+    function formatUsdtValue(value) {
+      if (!Number.isFinite(value)) return '—';
+      const abs = Math.abs(value);
+      let digits = 2;
+      if (abs >= 1000000) digits = 0;
+      else if (abs >= 100000) digits = 1;
+      else if (abs < 1) digits = 4;
+      return `${value.toLocaleString('ru-RU', { maximumFractionDigits: digits })} USDT`;
+    }
+
+    function positiveNumber(value) {
+      const num = Number(value);
+      return Number.isFinite(num) && num > 0 ? num : null;
+    }
+
+    function formatLimit(limit, price) {
+      if (!limit) return '—';
+      const parts = [];
+      const notionalRaw = positiveNumber(limit.max_notional);
+      const qtyRaw = positiveNumber(limit.max_qty);
+      const px = positiveNumber(price);
+      const notional = notionalRaw || (qtyRaw && px ? qtyRaw * px : null);
+      if (Number.isFinite(notional) && notional > 0) {
+        parts.push(`до ${formatNumber(notional)} USDT`);
+      }
+      if (qtyRaw && px) {
+        parts.push(`≈ ${formatNumber(qtyRaw)} ${baseSymbol()}`);
+      } else if (qtyRaw && !notional) {
+        parts.push(`объём ${formatNumber(qtyRaw)} ${baseSymbol()}`);
+      }
+      if (limit.limit_desc) {
+        parts.push(limit.limit_desc);
+      }
+      if (parts.length === 0) {
+        return '—';
+      }
+      return parts.join(', ');
+    }
+
+    function resetMetric(el) {
+      el.classList.remove('metric-pos', 'metric-neg');
+    }
+
+    function setMetric(el, usdEl, pctValue, usdValue) {
+      const pctRounded = roundToTwo(pctValue);
+      const usdRounded = roundToTwo(usdValue);
+      const pctText = formatPercent(pctValue);
+      const usdText = formatUsd(usdValue);
+      resetMetric(el);
+      if (pctRounded !== null) {
+        if (pctRounded > 0) el.classList.add('metric-pos');
+        if (pctRounded < 0) el.classList.add('metric-neg');
+      }
+      el.textContent = pctText;
+      usdEl.textContent = usdRounded === null ? '—' : `Δ ${usdText}`;
+    }
+
+    function currentVolumeUsdt() {
+      const raw = Number(volumeInput.value);
+      if (!Number.isFinite(raw) || raw <= 0) return 0;
+      return raw;
+    }
+
+    function normalizeOrderBook(raw) {
+      if (!raw) return null;
+      const bids = Array.isArray(raw.bids) ? raw.bids.map(level => {
+        if (!Array.isArray(level) || level.length < 2) return null;
+        const price = Number(level[0]);
+        const size = Number(level[1]);
+        if (!Number.isFinite(price) || !Number.isFinite(size) || price <= 0 || size <= 0) return null;
+        const quote = price * size;
+        return { price, size, quote: Number.isFinite(quote) ? quote : null };
+      }).filter(Boolean) : [];
+      const asks = Array.isArray(raw.asks) ? raw.asks.map(level => {
+        if (!Array.isArray(level) || level.length < 2) return null;
+        const price = Number(level[0]);
+        const size = Number(level[1]);
+        if (!Number.isFinite(price) || !Number.isFinite(size) || price <= 0 || size <= 0) return null;
+        const quote = price * size;
+        return { price, size, quote: Number.isFinite(quote) ? quote : null };
+      }).filter(Boolean) : [];
+      bids.sort((a, b) => b.price - a.price);
+      asks.sort((a, b) => a.price - b.price);
+      const last = Number(raw.last_price);
+      return {
+        bids: bids.slice(0, 5),
+        asks: asks.slice(0, 5),
+        last: Number.isFinite(last) ? last : null,
+      };
+    }
+
+    function ensureBook(book, fallbackBid, fallbackAsk, volume) {
+      const bids = book && book.bids ? book.bids.slice() : [];
+      const asks = book && book.asks ? book.asks.slice() : [];
+      if ((!bids || bids.length === 0) && Number.isFinite(fallbackBid) && fallbackBid > 0) {
+        const size = volume > 0 ? volume / fallbackBid : 0;
+        if (size > 0) bids.push({ price: fallbackBid, size });
+      }
+      if ((!asks || asks.length === 0) && Number.isFinite(fallbackAsk) && fallbackAsk > 0) {
+        const size = volume > 0 ? volume / fallbackAsk : 0;
+        if (size > 0) asks.push({ price: fallbackAsk, size });
+      }
+      const mapLevels = (levels) => levels
+        .map(level => {
+          if (!level) return null;
+          const price = Number(level.price);
+          const size = Number(level.size);
+          if (!Number.isFinite(price) || !Number.isFinite(size) || price <= 0 || size <= 0) return null;
+          const quote = price * size;
+          return { price, size, quote: Number.isFinite(quote) ? quote : null };
+        })
+        .filter(Boolean)
+        .slice(0, 5);
+      return {
+        bids: mapLevels(bids),
+        asks: mapLevels(asks),
+        last: book && Number.isFinite(book.last) ? book.last : (
+          Number.isFinite(fallbackBid) && Number.isFinite(fallbackAsk)
+            ? (Number(fallbackBid) + Number(fallbackAsk)) / 2
+            : null
+        ),
+      };
+    }
+
+    function fillBuyQuote(levels, quoteTarget) {
+      let remaining = quoteTarget;
+      let base = 0;
+      let spent = 0;
+      for (const level of levels) {
+        if (remaining <= 0) break;
+        const levelQuote = level.price * level.size;
+        if (levelQuote >= remaining) {
+          const take = remaining / level.price;
+          base += take;
+          spent += remaining;
+          remaining = 0;
+          break;
+        }
+        base += level.size;
+        spent += levelQuote;
+        remaining -= levelQuote;
+      }
+      return { base, quote: spent, filled: remaining <= 1e-8 };
+    }
+
+    function fillBuyBase(levels, baseTarget) {
+      let remaining = baseTarget;
+      let spent = 0;
+      let base = 0;
+      for (const level of levels) {
+        if (remaining <= 0) break;
+        const take = Math.min(level.size, remaining);
+        base += take;
+        spent += take * level.price;
+        remaining -= take;
+      }
+      return { base, quote: spent, filled: remaining <= 1e-8 };
+    }
+
+    function fillSellBase(levels, baseTarget) {
+      let remaining = baseTarget;
+      let received = 0;
+      let base = 0;
+      for (const level of levels) {
+        if (remaining <= 0) break;
+        const take = Math.min(level.size, remaining);
+        base += take;
+        received += take * level.price;
+        remaining -= take;
+      }
+      return { base, quote: received, filled: remaining <= 1e-8 };
+    }
+
+    function computeMetrics(row) {
+      if (!row) return null;
+      const volume = currentVolumeUsdt();
+      const entryPctRaw = Number(row.entry_pct);
+      const exitPctRaw = Number(row.exit_pct);
+      const fundingSpreadRaw = Number(row.funding_spread);
+      const commissionSource = typeof row.commission_total_pct !== 'undefined'
+        ? row.commission_total_pct
+        : row.commission;
+      const commissionPctRaw = Number(commissionSource);
+      const priceLongAsk = Number(row.price_long_ask);
+      const priceShortBid = Number(row.price_short_bid);
+      const priceLongBid = Number(row.price_long_bid);
+      const priceShortAsk = Number(row.price_short_ask);
+
+      const longBook = ensureBook(
+        normalizeOrderBook(row.orderbook_long),
+        priceLongBid,
+        priceLongAsk,
+        volume,
+      );
+      const shortBook = ensureBook(
+        normalizeOrderBook(row.orderbook_short),
+        priceShortBid,
+        priceShortAsk,
+        volume,
+      );
+
+      const baseFromTop = volume > 0 && Number.isFinite(priceLongAsk) && priceLongAsk > 0
+        ? volume / priceLongAsk
+        : volume <= 0 ? 0 : null;
+
+      const entryPnlApprox = Number.isFinite(baseFromTop) && Number.isFinite(priceShortBid) && Number.isFinite(priceLongAsk)
+        ? (priceShortBid - priceLongAsk) * baseFromTop
+        : null;
+      const exitPnlApprox = Number.isFinite(baseFromTop) && Number.isFinite(priceLongBid) && Number.isFinite(priceShortAsk)
+        ? (priceLongBid - priceShortAsk) * baseFromTop
+        : null;
+
+      const fundingPct = Number.isFinite(fundingSpreadRaw) ? fundingSpreadRaw * 100 : null;
+      const entryMidApprox = Number.isFinite(priceLongAsk) && Number.isFinite(priceShortBid)
+        ? (priceLongAsk + priceShortBid) / 2
+        : null;
+      const exitMidApprox = Number.isFinite(priceLongBid) && Number.isFinite(priceShortAsk)
+        ? (priceLongBid + priceShortAsk) / 2
+        : null;
+
+      const avgNotionalApprox = Number.isFinite(baseFromTop) && Number.isFinite(entryMidApprox)
+        ? baseFromTop * entryMidApprox
+        : null;
+      const fundingUsdApprox = Number.isFinite(avgNotionalApprox) && Number.isFinite(fundingSpreadRaw)
+        ? avgNotionalApprox * fundingSpreadRaw
+        : null;
+      const commissionPct = Number.isFinite(commissionPctRaw) ? commissionPctRaw : null;
+      const commissionUsdApprox = Number.isFinite(avgNotionalApprox) && Number.isFinite(commissionPctRaw)
+        ? avgNotionalApprox * (commissionPctRaw / 100)
+        : null;
+
+      const result = {
+        volume,
+        baseQty: baseFromTop ?? 0,
+        entryPct: Number.isFinite(entryPctRaw) ? entryPctRaw : null,
+        exitPct: Number.isFinite(exitPctRaw) ? exitPctRaw : null,
+        entryPnl: entryPnlApprox,
+        exitPnl: exitPnlApprox,
+        fundingPct,
+        fundingUsd: fundingUsdApprox,
+        commissionPct,
+        commissionUsd: commissionUsdApprox,
+        longBook,
+        shortBook,
+        avgLongEntry: Number.isFinite(priceLongAsk) ? priceLongAsk : null,
+        avgShortEntry: Number.isFinite(priceShortBid) ? priceShortBid : null,
+        avgLongExit: Number.isFinite(priceLongBid) ? priceLongBid : null,
+        avgShortExit: Number.isFinite(priceShortAsk) ? priceShortAsk : null,
+      };
+
+      if (volume <= 0) {
+        return result;
+      }
+
+      if (
+        !longBook
+        || !Array.isArray(longBook.asks)
+        || longBook.asks.length === 0
+        || !shortBook
+        || !Array.isArray(shortBook.bids)
+        || shortBook.bids.length === 0
+      ) {
+        return result;
+      }
+
+      const longVolumeFill = fillBuyQuote(longBook.asks, volume);
+      if (longVolumeFill.base <= 0) {
+        return result;
+      }
+      const targetBase = longVolumeFill.base;
+      const shortVolumeFill = fillSellBase(shortBook.bids, targetBase);
+      const baseQty = Math.min(targetBase, shortVolumeFill.base);
+      if (!(baseQty > 0)) {
+        return result;
+      }
+
+      const longFill = fillBuyBase(longBook.asks, baseQty);
+      const shortEntryFill = fillSellBase(shortBook.bids, baseQty);
+      const longExitFill = fillSellBase(longBook.bids, baseQty);
+      const shortCoverFill = fillBuyBase(shortBook.asks, baseQty);
+
+      const avgLongEntry = longFill.base > 0 ? longFill.quote / longFill.base : result.avgLongEntry;
+      const avgShortEntry = shortEntryFill.base > 0 ? shortEntryFill.quote / shortEntryFill.base : result.avgShortEntry;
+      const avgLongExit = longExitFill.base > 0 ? longExitFill.quote / longExitFill.base : result.avgLongExit;
+      const avgShortExit = shortCoverFill.base > 0 ? shortCoverFill.quote / shortCoverFill.base : result.avgShortExit;
+
+      const entryMid = Number.isFinite(avgLongEntry) && Number.isFinite(avgShortEntry)
+        ? (avgLongEntry + avgShortEntry) / 2
+        : null;
+      const exitMid = Number.isFinite(avgLongExit) && Number.isFinite(avgShortExit)
+        ? (avgLongExit + avgShortExit) / 2
+        : null;
+
+      const entryPct = Number.isFinite(entryMid) && entryMid !== 0
+        ? ((avgShortEntry - avgLongEntry) / entryMid) * 100
+        : result.entryPct;
+      const exitPct = Number.isFinite(exitMid) && exitMid !== 0
+        ? ((avgLongExit - avgShortExit) / exitMid) * 100
+        : result.exitPct;
+
+      const entryPnl = shortEntryFill.quote - longFill.quote;
+      const exitPnl = longExitFill.quote - shortCoverFill.quote;
+
+      const notionalLong = longFill.quote;
+      const notionalShort = shortEntryFill.quote;
+      const avgNotional = (notionalLong + notionalShort) / 2;
+
+      const fundingUsd = Number.isFinite(avgNotional) && Number.isFinite(fundingSpreadRaw)
+        ? avgNotional * fundingSpreadRaw
+        : result.fundingUsd;
+      const commissionUsd = Number.isFinite(avgNotional) && Number.isFinite(commissionPct)
+        ? avgNotional * (commissionPct / 100)
+        : result.commissionUsd;
+
+      result.baseQty = baseQty;
+      result.entryPct = Number.isFinite(entryPct) ? entryPct : result.entryPct;
+      result.exitPct = Number.isFinite(exitPct) ? exitPct : result.exitPct;
+      result.entryPnl = Number.isFinite(entryPnl) ? entryPnl : result.entryPnl;
+      result.exitPnl = Number.isFinite(exitPnl) ? exitPnl : result.exitPnl;
+      result.avgLongEntry = Number.isFinite(avgLongEntry) ? avgLongEntry : result.avgLongEntry;
+      result.avgShortEntry = Number.isFinite(avgShortEntry) ? avgShortEntry : result.avgShortEntry;
+      result.avgLongExit = Number.isFinite(avgLongExit) ? avgLongExit : result.avgLongExit;
+      result.avgShortExit = Number.isFinite(avgShortExit) ? avgShortExit : result.avgShortExit;
+      result.fundingUsd = Number.isFinite(fundingUsd) ? fundingUsd : result.fundingUsd;
+      result.commissionUsd = Number.isFinite(commissionUsd) ? commissionUsd : result.commissionUsd;
+
+      return result;
+    }
+
+    function renderOrderBookElements({
+      asksEl,
+      bidsEl,
+      midPriceEl,
+      emptyEl,
+      book,
+    }) {
+      if (!book || ((!book.asks || book.asks.length === 0) && (!book.bids || book.bids.length === 0))) {
+        asksEl.innerHTML = '';
+        bidsEl.innerHTML = '';
+        midPriceEl.textContent = '—';
+        if (emptyEl) emptyEl.classList.remove('hidden');
+        return;
+      }
+      const asksRows = (book.asks || []).slice(0, 5);
+      const bidsRows = (book.bids || []).slice(0, 5);
+      asksEl.innerHTML = asksRows.map(level => `<div class="level"><span>${formatPrice(level.price)}</span><span class="volume">${formatUsdtValue(level.quote)}</span></div>`).join('');
+      bidsEl.innerHTML = bidsRows.map(level => `<div class="level"><span>${formatPrice(level.price)}</span><span class="volume">${formatUsdtValue(level.quote)}</span></div>`).join('');
+      midPriceEl.textContent = Number.isFinite(book.last) ? formatPrice(book.last) : '—';
+      if (emptyEl) emptyEl.classList.add('hidden');
+    }
+
+    function renderOrderBooks(row, metrics) {
+      const volume = currentVolumeUsdt();
+      const longBook = metrics && metrics.longBook
+        ? metrics.longBook
+        : ensureBook(normalizeOrderBook(row ? row.orderbook_long : null), Number(row ? row.price_long_bid : null), Number(row ? row.price_long_ask : null), volume);
+      const shortBook = metrics && metrics.shortBook
+        ? metrics.shortBook
+        : ensureBook(normalizeOrderBook(row ? row.orderbook_short : null), Number(row ? row.price_short_bid : null), Number(row ? row.price_short_ask : null), volume);
+
+      renderOrderBookElements({
+        asksEl: longAsksEl,
+        bidsEl: longBidsEl,
+        midPriceEl: longLastPriceEl,
+        emptyEl: longOrderbookEmpty,
+        book: longBook,
+      });
+      renderOrderBookElements({
+        asksEl: shortAsksEl,
+        bidsEl: shortBidsEl,
+        midPriceEl: shortLastPriceEl,
+        emptyEl: shortOrderbookEmpty,
+        book: shortBook,
+      });
+    }
+
+    function updateFundingMeta() {
+      if (!currentRow) {
+        longFundingMeta.textContent = 'Фандинг: —';
+        shortFundingMeta.textContent = 'Фандинг: —';
+        return;
+      }
+      const longRate = Number(currentRow.funding_long);
+      const shortRate = Number(currentRow.funding_short);
+      const longInterval = currentRow.funding_interval_long || '—';
+      const shortInterval = currentRow.funding_interval_short || '—';
+      const longText = Number.isFinite(longRate)
+        ? `${(longRate * 100).toFixed(4)}% / ${longInterval}`
+        : '—';
+      const shortText = Number.isFinite(shortRate)
+        ? `${(shortRate * 100).toFixed(4)}% / ${shortInterval}`
+        : '—';
+      longFundingMeta.textContent = `Фандинг: ${longText}`;
+      shortFundingMeta.textContent = `Фандинг: ${shortText}`;
+    }
+
+    function resolveLimitPrice(side, metrics) {
+      if (metrics) {
+        if (side === 'long' && Number.isFinite(metrics.avgLongEntry)) return metrics.avgLongEntry;
+        if (side === 'short' && Number.isFinite(metrics.avgShortEntry)) return metrics.avgShortEntry;
+      }
+      if (!currentRow) return null;
+      if (side === 'long') {
+        return Number(currentRow.price_long_ask);
+      }
+      if (side === 'short') {
+        return Number(currentRow.price_short_bid);
+      }
+      return null;
+    }
+
+    function updateLimitsMeta(metrics = latestMetrics) {
+      const longPrice = resolveLimitPrice('long', metrics);
+      const shortPrice = resolveLimitPrice('short', metrics);
+      const longText = currentLimits.long ? formatLimit(currentLimits.long, longPrice) : '—';
+      const shortText = currentLimits.short ? formatLimit(currentLimits.short, shortPrice) : '—';
+      longLimitMeta.textContent = `Лимит: ${longText}`;
+      shortLimitMeta.textContent = `Лимит: ${shortText}`;
+    }
+
+    function updateDocumentTitle(entry, exit) {
+      const entryText = formatPlainTwo(entry);
+      const exitText = formatPlainTwo(exit);
+      document.title = `${entryText}/${exitText} ${symbolUpper}`;
+    }
+
+    function applyMetrics(metrics) {
+      if (!metrics) {
+        setMetric(metricEntry, metricEntryUsd, null, null);
+        setMetric(metricExit, metricExitUsd, null, null);
+        setMetric(metricFunding, metricFundingUsd, null, null);
+        setMetric(metricFees, metricFeesUsd, null, null);
+        updateDocumentTitle(null, null);
+        return;
+      }
+      setMetric(metricEntry, metricEntryUsd, metrics.entryPct, metrics.entryPnl);
+      setMetric(metricExit, metricExitUsd, metrics.exitPct, metrics.exitPnl);
+      setMetric(metricFunding, metricFundingUsd, metrics.fundingPct, metrics.fundingUsd);
+      const commissionPct = Number.isFinite(metrics.commissionPct) ? -metrics.commissionPct : metrics.commissionPct;
+      const commissionUsd = Number.isFinite(metrics.commissionUsd) ? -Math.abs(metrics.commissionUsd) : metrics.commissionUsd;
+      setMetric(metricFees, metricFeesUsd, commissionPct, commissionUsd);
+      updateDocumentTitle(metrics.entryPct, metrics.exitPct);
+    }
+
+    async function loadLimits() {
+      if (!longExchange || !shortExchange) {
+        currentLimits = { long: null, short: null };
+        updateLimitsMeta();
+        return;
+      }
+      try {
+        const params = new URLSearchParams({ long: longExchange, short: shortExchange });
+        const res = await fetch(`/api/pair/${encodeURIComponent(symbol)}/limits?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          currentLimits = {
+            long: data?.long || null,
+            short: data?.short || null,
+          };
+        } else {
+          currentLimits = { long: null, short: null };
+        }
+      } catch (err) {
+        currentLimits = { long: null, short: null };
+      }
+      updateLimitsMeta();
+    }
+
+    function updateSummary() {
+      const metrics = computeMetrics(currentRow);
+      latestMetrics = metrics;
+      renderOrderBooks(currentRow, metrics);
+      updateFundingMeta();
+      applyMetrics(metrics);
+      updateLimitsMeta(metrics);
+    }
+
+    function pruneBuffer(buffer) {
+      if (!Array.isArray(buffer) || buffer.length === 0) return 0;
+      const cutoff = Math.floor(Date.now() / 1000) - LOOKBACK_SECONDS;
+      let dropIndex = 0;
+      while (dropIndex < buffer.length && buffer[dropIndex].time < cutoff) {
+        dropIndex += 1;
+      }
+      if (dropIndex > 0) {
+        buffer.splice(0, dropIndex);
+      }
+      return dropIndex;
+    }
+
+    function handleRealtimeMessage(raw) {
+      if (!raw) return;
+      let payload;
+      try {
+        payload = JSON.parse(raw);
+      } catch (e) {
+        return;
+      }
+      if (!Array.isArray(payload)) return;
+      let updated = false;
+      payload.forEach(row => {
+        if (!row) return;
+        const ts = Number(row._ts ?? row.ts ?? Date.now() / 1000);
+        if (applyRealtimeRow(row, ts)) {
+          updated = true;
+        }
+      });
+      if (updated) {
+        ensureFallbackLoop();
+      }
+    }
+
+    function sortCandles(data) {
+      if (!Array.isArray(data)) return [];
+      return data.slice().sort((a, b) => a.time - b.time);
+    }
+
+    function mergeCandles(history, updates) {
+      const result = new Map();
+      const push = (source) => {
+        if (!Array.isArray(source)) return;
+        source.forEach((candle) => {
+          if (!candle) return;
+          const time = Number(candle.time);
+          if (!Number.isFinite(time)) return;
+          result.set(time, {
+            time,
+            open: Number(candle.open),
+            high: Number(candle.high),
+            low: Number(candle.low),
+            close: Number(candle.close),
+          });
+        });
+      };
+      push(history);
+      push(updates);
+      return Array.from(result.values()).sort((a, b) => a.time - b.time);
+    }
+
+    async function loadCandles(metric) {
+      const params = new URLSearchParams({
+        long: longExchange,
+        short: shortExchange,
+        timeframe: timeframeSelect.value,
+        metric,
+        days: LOOKBACK_DAYS,
+      });
+      const res = await fetch(`/api/pair/${encodeURIComponent(symbol)}/spreads?${params.toString()}`);
+      if (!res.ok) {
+        return { candles: [] };
+      }
+      const data = await res.json();
+      return data;
+    }
+
+    function toSeriesData(candles) {
+      return candles.map(c => ({
+        time: Math.floor(c.ts),
+        open: Number(c.open),
+        high: Number(c.high),
+        low: Number(c.low),
+        close: Number(c.close),
+      }));
+    }
+
+    async function renderEntry() {
+      entryState.activate();
+      const { candles } = await loadCandles('entry');
+      if (!candles || candles.length === 0) {
+        if (entryState.data.length === 0) {
+          entryState.setData([]);
+        } else {
+          entryState.applyFullData();
+        }
+        return;
+      }
+      const data = toSeriesData(candles);
+      entryState.mergeData(data);
+    }
+
+    async function renderExit() {
+      if (!exitToggle.checked) {
+        return;
+      }
+      exitState.activate();
+      const { candles } = await loadCandles('exit');
+      if (!candles || candles.length === 0) {
+        exitState.updateEmpty();
+        return;
+      }
+      const historical = toSeriesData(candles);
+      exitState.mergeData(historical);
+    }
+
+    async function refreshCharts() {
+      if (!longExchange || !shortExchange) return;
+      entryState.clear();
+      exitState.clear();
+      fallbackFetchPromise = null;
+      ensureRealtimeSocket();
+      ensureFallbackLoop();
+      updateExchangeInfo();
+      updateUrl();
+      syncCurrentRow(true);
+      updateSummary();
+      if (currentRow) {
+        markRealtimeUpdate();
+      } else {
+        lastRealtimeUpdate = 0;
+      }
+      await loadLimits();
+      await renderEntry();
+      if (exitToggle.checked) {
+        await renderExit();
+      }
+      try {
+        await fetchRealtimeSnapshot(true);
+      } catch (err) {
+        // ignore network errors during forced refresh
+      }
+    }
+
+    timeframeSelect.addEventListener('change', () => {
+      refreshCharts();
+    });
+
+    volumeInput.addEventListener('input', () => {
+      updateSummary();
+    });
+    volumeInput.addEventListener('change', () => {
+      updateSummary();
+    });
+
+    reverseBtn.addEventListener('click', async () => {
+      if (!longExchange || !shortExchange) return;
+      [longExchange, shortExchange] = [shortExchange, longExchange];
+      await refreshCharts();
+    });
+
+    exitToggle.addEventListener('change', async () => {
+      exitCard.classList.toggle('hidden', !exitToggle.checked);
+      if (exitToggle.checked) {
+        exitState.activate();
+        ensureRealtimeSocket(true);
+        try {
+          await renderExit();
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    });
+
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const html = document.documentElement;
+      const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      [entryState, exitState].forEach((state) => {
+        state.applyTheme();
+        if (state.chart) {
+          applyTimeScaleOptions(state.chart);
+        }
+      });
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (realtimeSocket) {
+        try { realtimeSocket.close(); } catch (_) {}
+        realtimeSocket = null;
+      }
+      if (fallbackTimer) {
+        clearInterval(fallbackTimer);
+        fallbackTimer = null;
+      }
+    });
+
+    (async function init() {
+      await fetchOverview();
+      ensureDefaultExchanges();
+      await refreshCharts();
+    })();
+  </script>
+</body>
+</html>

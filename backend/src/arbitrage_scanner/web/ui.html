@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Арбитражный сканер</title>
+  <style>
+    :root { --bg:#0f1115; --fg:#e6e6e6; --muted:#9aa4ad; --row:#161a20; --accent:#4aa3ff; --bad:#ff5a5f; --good:#12d67a; --link:#7ab7ff; --border:#2a2f39; }
+    [data-theme="light"] { --bg:#fff; --fg:#0f172a; --muted:#4b5563; --row:#f8fafc; --accent:#0ea5e9; --bad:#ef4444; --good:#10b981; --link:#2563eb; --border:#e5e7eb; }
+    body { background:var(--bg); color:var(--fg); font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; margin:0; }
+    header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); }
+    h1 { font-size:18px; margin:0; }
+    .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .card { padding:12px 16px; }
+    .filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .table { width:100%; border-collapse:collapse; }
+    th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); }
+    tr:nth-child(2n){ background:var(--row); }
+    a { color:var(--link); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .badge { font-size:12px; color:var(--muted); }
+    .pos { color:var(--good); }
+    .neg { color:var(--bad); }
+    input[type="number"]{ width:120px; padding:6px 8px; border:1px solid var(--border); background:transparent; color:var(--fg); border-radius:6px; }
+    label { font-size:14px; color:var(--muted); }
+    .btn { padding:6px 10px; border:1px solid var(--border); background:transparent; color:var(--fg); border-radius:6px; cursor:pointer; }
+    th.sort { cursor:pointer; user-select:none; white-space:nowrap; }
+    th.sort::after { content:""; display:inline-block; margin-left:6px; font-size:12px; color:var(--muted); opacity:0; transition:opacity 0.2s ease; }
+    th.sort[data-active="true"][data-direction="asc"]::after { content:"▲"; opacity:1; }
+    th.sort[data-active="true"][data-direction="desc"]::after { content:"▼"; opacity:1; }
+    .pager { display:flex; gap:8px; align-items:center; justify-content:flex-end; padding:8px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Арбитражный сканер</h1>
+    <div class="controls">
+
+      <div id="exchange-filters" class="filters"></div>
+
+      <div>
+        <label>Мин. курсовой спред (%) <input type="number" id="min-entry" step="0.01" value="0"></label>
+      </div>
+      <div>
+        <label>Мин. фандинговый спред (%) <input type="number" id="min-funding" step="0.01" value="0"></label>
+      </div>
+      <button class="btn" id="theme-toggle">Светлая/Тёмная</button>
+    </div>
+  </header>
+
+  <div class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Пара</th>
+          <th>LONG</th>
+          <th>SHORT</th>
+          <th class="sort" data-sort="entry">Вход</th>
+          <th>Выход</th>
+          <th class="sort" data-sort="funding">Спред фандинга</th>
+          <th>Комиссия</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="pager">
+      <button class="btn" id="prev">Назад</button>
+      <span id="pageinfo"></span>
+      <button class="btn" id="next">Вперёд</button>
+    </div>
+  </div>
+
+  <script>
+    const PAGE_SIZE = 50;
+    let sortBy = "entry"; // "entry" | "funding"
+    let sortDir = "desc";
+    let rows = [];
+    let page = 1;
+
+
+    const exBinance = document.getElementById('ex-binance');
+    const exBybit = document.getElementById('ex-bybit');
+    const exMexc = document.getElementById('ex-mexc');
+    const exBingx = document.getElementById('ex-bingx');
+
+    const exchangeFiltersContainer = document.getElementById('exchange-filters');
+    const exchangeInputs = new Map();
+ 
+    const minEntry = document.getElementById('min-entry');
+    const minFunding = document.getElementById('min-funding');
+    const tbody = document.getElementById('tbody');
+    const pageinfo = document.getElementById('pageinfo');
+    const sortHeaders = document.querySelectorAll('.sort');
+
+    function updateSortIndicators() {
+      sortHeaders.forEach(th => {
+        const isActive = th.dataset.sort === sortBy;
+        if (isActive) {
+          th.dataset.active = 'true';
+          th.dataset.direction = sortDir;
+          th.setAttribute('aria-sort', sortDir === 'asc' ? 'ascending' : 'descending');
+        } else {
+          delete th.dataset.active;
+          delete th.dataset.direction;
+          th.removeAttribute('aria-sort');
+        }
+      });
+    }
+
+    function applyFilters() {
+      const enabledEx = new Set();
+      const knownEx = new Set();
+      exchangeInputs.forEach((input, ex) => {
+        knownEx.add(ex);
+        if (input.checked) enabledEx.add(ex);
+      });
+      const minEValue = parseFloat(minEntry.value);
+      const minFValue = parseFloat(minFunding.value);
+      const minE = Number.isFinite(minEValue) ? minEValue : 0;
+      const minF = Number.isFinite(minFValue) ? (minFValue / 100) : 0;
+
+      let filtered = rows;
+      if (exchangeInputs.size > 0) {
+        if (enabledEx.size === 0) {
+          filtered = [];
+        } else {
+          filtered = rows.filter(r => {
+            const longKnown = knownEx.has(r.long_exchange);
+            const shortKnown = knownEx.has(r.short_exchange);
+            const longOk = !longKnown || enabledEx.has(r.long_exchange);
+            const shortOk = !shortKnown || enabledEx.has(r.short_exchange);
+            return longOk && shortOk;
+          });
+        }
+      }
+      filtered = filtered.filter(r => r.entry_pct >= minE && Math.abs(r.funding_spread) >= minF);
+
+      filtered.sort((a,b)=>{
+        const key = sortBy === "entry" ? "entry_pct" : "funding_spread";
+        const va = a[key], vb = b[key];
+        return sortDir === "desc" ? (vb - va) : (va - vb);
+      });
+
+      updateSortIndicators();
+
+      const total = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      if (page > totalPages) page = totalPages;
+      const start = (page - 1) * PAGE_SIZE;
+      const pageRows = filtered.slice(start, start + PAGE_SIZE);
+      render(pageRows);
+      pageinfo.textContent = `Страница ${page} из ${totalPages} (всего ${total})`;
+    }
+
+    function render(rs) {
+      tbody.innerHTML = rs.map(r => {
+        const pairUrl = `/pair/${encodeURIComponent(r.symbol)}?long=${encodeURIComponent(r.long_exchange)}&short=${encodeURIComponent(r.short_exchange)}`;
+        const pairLink = `<a href="${pairUrl}" title="Карточка пары" target="_blank" rel="noopener">${r.symbol}</a>`;
+        const exLong = `<div><a href="${exchangeUrl(r.long_exchange, r.symbol)}" target="_blank" rel="noopener">${r.long_exchange.toUpperCase()}</a><div class="badge">фандинг: ${(r.funding_long*100).toFixed(4)}% / ${r.funding_interval_long||"—"}</div></div>`;
+        const exShort = `<div><a href="${exchangeUrl(r.short_exchange, r.symbol)}" target="_blank" rel="noopener">${r.short_exchange.toUpperCase()}</a><div class="badge">фандинг: ${(r.funding_short*100).toFixed(4)}% / ${r.funding_interval_short||"—"}</div></div>`;
+        const entryCls = r.entry_pct >= 0 ? "pos" : "neg";
+        const exitCls = r.exit_pct >= 0 ? "pos" : "neg";
+        const fundCls = r.funding_spread >= 0 ? "pos" : "neg";
+        return `<tr>
+          <td>${pairLink}</td>
+          <td>${exLong}</td>
+          <td>${exShort}</td>
+          <td class="${entryCls}">${r.entry_pct.toFixed(4)}%</td>
+          <td class="${exitCls}">${r.exit_pct.toFixed(4)}%</td>
+          <td class="${fundCls}">${(r.funding_spread*100).toFixed(4)}%</td>
+          <td>${r.commission_total_pct.toFixed(4)}%</td>
+        </tr>`;
+      }).join("");
+    }
+
+    function exchangeUrl(ex, sym) {
+      switch (ex) {
+        case "binance": return `https://www.binance.com/en/futures/${sym}`;
+        case "bybit": return `https://www.bybit.com/trade/usdt/${sym}`;
+        case "mexc": return `https://futures.mexc.com/exchange/${toMexcSymbol(sym)}`;
+        case "bingx": return `https://bingx.com/en-us/futures/${toBingxSymbol(sym)}`;
+        default: return "#";
+      }
+    }
+
+    function toMexcSymbol(sym) {
+      if (!sym) return sym;
+      if (sym.includes('_')) return sym;
+      return sym.endsWith('USDT') ? `${sym.slice(0, -4)}_USDT` : sym;
+    }
+
+    function toBingxSymbol(sym) {
+      if (!sym) return sym;
+      const upper = sym.toUpperCase();
+      const quotes = ["USDT", "USDC", "USD", "BUSD", "FDUSD"];
+      const quote = quotes.find(q => upper.endsWith(q));
+      if (!quote) return upper;
+      const base = upper.slice(0, -quote.length);
+      return `${base}-${quote}`;
+    }
+
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const html = document.documentElement;
+      html.setAttribute('data-theme', html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+
+    sortHeaders.forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.sort;
+        if (sortBy === key) sortDir = (sortDir === "desc") ? "asc" : "desc";
+        else { sortBy = key; sortDir = "desc"; }
+        applyFilters();
+      });
+    });
+
+    updateSortIndicators();
+
+    document.getElementById('prev').addEventListener('click', () => { if (page>1){ page--; applyFilters(); }});
+    document.getElementById('next').addEventListener('click', () => { page++; applyFilters(); });
+
+    [minEntry, minFunding].forEach(el => el.addEventListener('input', () => { page=1; applyFilters(); }));
+
+    function renderExchangeFilters(exchanges) {
+      if (!Array.isArray(exchanges) || exchanges.length === 0) return;
+
+      const prevSelected = new Set();
+      let prevTotal = 0;
+      exchangeInputs.forEach((input, ex) => {
+        prevTotal += 1;
+        if (input.checked) prevSelected.add(ex);
+      });
+
+      exchangeFiltersContainer.innerHTML = '';
+      exchangeInputs.clear();
+
+      const normalized = Array.from(new Set(exchanges.map(ex => String(ex)))).sort((a, b) => a.localeCompare(b));
+      const hadManualSelection = prevTotal > 0 && prevSelected.size < prevTotal;
+
+      normalized.forEach(ex => {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.id = `ex-${ex}`;
+        const wasSelected = prevSelected.has(ex);
+        input.checked = wasSelected || !hadManualSelection;
+        input.addEventListener('input', () => { page = 1; applyFilters(); });
+
+        label.appendChild(input);
+        label.append(` ${ex.toUpperCase()}`);
+        exchangeFiltersContainer.appendChild(label);
+        exchangeInputs.set(ex, input);
+      });
+
+      page = 1;
+      applyFilters();
+    }
+
+    async function initExchangeFilters() {
+      try {
+        const res = await fetch('/stats');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.exchanges) && data.exchanges.length > 0) {
+            renderExchangeFilters(data.exchanges);
+            return;
+          }
+        }
+      } catch (e) {}
+
+      // Фоллбек на случай ошибок запроса
+      if (exchangeInputs.size === 0) {
+        renderExchangeFilters(['binance', 'bybit', 'mexc', 'bingx']);
+      }
+    }
+
+    function updateExchangeFiltersFromRows(rs) {
+      const discovered = new Set();
+      rs.forEach(r => {
+        if (r.long_exchange) discovered.add(r.long_exchange);
+        if (r.short_exchange) discovered.add(r.short_exchange);
+      });
+
+      if (discovered.size === 0) return;
+
+      const current = new Set(exchangeInputs.keys());
+      let shouldUpdate = current.size === 0;
+      discovered.forEach(ex => {
+        if (!current.has(ex)) shouldUpdate = true;
+      });
+
+      if (!shouldUpdate) return;
+
+      const merged = new Set([...current, ...discovered]);
+      renderExchangeFilters(Array.from(merged));
+    }
+
+    initExchangeFilters();
+
+    // WS
+    const wsProto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${wsProto}://${location.host}/ws/spreads`);
+    ws.onmessage = (ev) => {
+      try {
+        rows = JSON.parse(ev.data) || [];
+        if (exchangeInputs.size === 0) {
+          updateExchangeFiltersFromRows(rows);
+        } else {
+          updateExchangeFiltersFromRows(rows);
+          applyFilters();
+        }
+      } catch (e) {}
+    };
+    ws.onclose = ()=>{ setTimeout(()=>location.reload(), 1500); };
+  </script>
+</body>
+</html>
