@@ -324,7 +324,7 @@ async def _send_subscriptions(ws, symbols: Sequence[tuple[str, str]]) -> None:
 
     for common, native in unique:
         now = int(time.time())
-        logger.info("Gate subscribe ticker -> %s (native=%s)", common, native)
+        logger.debug("Gate subscribe ticker -> %s (native=%s)", common, native)
         ticker_payload = {
             "time": now,
             "channel": "futures.tickers",
@@ -334,7 +334,7 @@ async def _send_subscriptions(ws, symbols: Sequence[tuple[str, str]]) -> None:
         await _send_ws_payload(ws, ticker_payload)
         await asyncio.sleep(WS_SUB_DELAY)
 
-        logger.info("Gate subscribe depth -> %s", native)
+        logger.debug("Gate subscribe depth -> %s", native)
         depth_payload = {
             "time": now,
             "channel": "futures.order_book",
@@ -344,7 +344,7 @@ async def _send_subscriptions(ws, symbols: Sequence[tuple[str, str]]) -> None:
         await _send_ws_payload(ws, depth_payload)
         await asyncio.sleep(WS_SUB_DELAY)
 
-        logger.info("Gate subscribe funding -> %s", native)
+        logger.debug("Gate subscribe funding -> %s", native)
         funding_payload = {
             "time": now,
             "channel": "futures.funding_rate",
@@ -405,7 +405,7 @@ def _decode_zlib(data: bytes) -> str:
 async def _send_ws_payload(ws, payload: dict) -> None:
     try:
         await ws.send(json.dumps(payload))
-        logger.info("Gate WS send -> %s", json.dumps(payload)[:200])
+        logger.debug("Gate WS send -> %s", json.dumps(payload)[:200])
     except Exception:
         logger.exception("Gate subscription send failed", extra={"payload": payload})
 
@@ -509,32 +509,22 @@ def _is_gate_ack(message: dict) -> bool:
 
 
 def _log_ws_raw_frame(exchange: str, message: str | bytes | bytearray) -> None:
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+
     if isinstance(message, (bytes, bytearray)):
-        buf = bytes(message[:512])
-        hex_preview = buf.hex()
-        try:
-            text_preview = buf.decode("utf-8")
-        except Exception:
-            text_preview = ""
-        if text_preview:
-            logger.debug(
-                "%s WS RX raw (first 512b): text=%s hex=%s",
-                exchange.upper(),
-                text_preview,
-                hex_preview,
-            )
-        else:
-            logger.debug(
-                "%s WS RX raw (first 512b hex): %s",
-                exchange.upper(),
-                hex_preview,
-            )
-    else:
         logger.debug(
-            "%s WS RX raw (first 512b): %s",
+            "%s WS RX raw frame (%d bytes)",
             exchange.upper(),
-            str(message)[:512],
+            len(message),
         )
+        return
+
+    logger.debug(
+        "%s WS RX raw frame: %s",
+        exchange.upper(),
+        str(message)[:512],
+    )
 
 
 async def _ws_heartbeat(ws, *, interval: float, name: str) -> None:

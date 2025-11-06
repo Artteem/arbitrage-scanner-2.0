@@ -389,17 +389,17 @@ async def _send_mexc_subscriptions(
         return
 
     for common, native in unique:
-        logger.info("MEXC subscribe ticker -> %s (native=%s)", common, native)
+        logger.debug("MEXC subscribe ticker -> %s (native=%s)", common, native)
         ticker_payload = {"op": "sub.ticker", "symbol": native}
         await _send_json_with_retry(ws, ticker_payload)
         await asyncio.sleep(WS_SUB_DELAY)
 
-        logger.info("MEXC subscribe depth -> %s", native)
+        logger.debug("MEXC subscribe depth -> %s", native)
         depth_payload = {"op": "sub.depth", "symbol": native, "type": "step0"}
         await _send_json_with_retry(ws, depth_payload)
         await asyncio.sleep(WS_SUB_DELAY)
 
-        logger.info("MEXC subscribe funding -> %s", native)
+        logger.debug("MEXC subscribe funding -> %s", native)
         funding_payload = {"op": "sub.funding_rate", "symbol": native}
         await _send_json_with_retry(ws, funding_payload)
         await asyncio.sleep(WS_SUB_DELAY)
@@ -408,7 +408,7 @@ async def _send_mexc_subscriptions(
 async def _send_json_with_retry(ws, payload: dict) -> None:
     try:
         await ws.send(json.dumps(payload))
-        logger.info("MEXC WS send -> %s", json.dumps(payload)[:200])
+        logger.debug("MEXC WS send -> %s", json.dumps(payload)[:200])
     except Exception:
         logger.exception("Failed to send MEXC subscription", extra={"payload": payload})
 
@@ -444,32 +444,22 @@ def _decode_zlib(data: bytes) -> str:
 
 
 def _log_ws_raw_frame(exchange: str, message: str | bytes | bytearray) -> None:
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+
     if isinstance(message, (bytes, bytearray)):
-        buf = bytes(message[:512])
-        hex_preview = buf.hex()
-        try:
-            text_preview = buf.decode("utf-8")
-        except Exception:
-            text_preview = ""
-        if text_preview:
-            logger.debug(
-                "%s WS RX raw (first 512b): text=%s hex=%s",
-                exchange.upper(),
-                text_preview,
-                hex_preview,
-            )
-        else:
-            logger.debug(
-                "%s WS RX raw (first 512b hex): %s",
-                exchange.upper(),
-                hex_preview,
-            )
-    else:
         logger.debug(
-            "%s WS RX raw (first 512b): %s",
+            "%s WS RX raw frame (%d bytes)",
             exchange.upper(),
-            str(message)[:512],
+            len(message),
         )
+        return
+
+    logger.debug(
+        "%s WS RX raw frame: %s",
+        exchange.upper(),
+        str(message)[:512],
+    )
 
 
 def _is_mexc_ack(message: dict) -> bool:

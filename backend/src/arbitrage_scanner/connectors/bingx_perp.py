@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
+import httpx
 import websockets
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
@@ -44,6 +45,11 @@ BINGX_HEADERS = {
     "Referer": "https://bingx.com/",
     "Accept": "application/json, text/plain, */*",
 }
+
+_BINGX_WS_SYMBOL_CACHE: dict[str, str] | None = None
+_BINGX_WS_SYMBOL_CACHE_TS = 0.0
+_BINGX_WS_SYMBOL_CACHE_TTL = 15 * 60
+BINGX_CONTRACTS_URL = "https://open-api.bingx.com/openApi/swap/v2/market/getAllContracts"
 
 
 def _is_bingx_ack(msg: dict) -> bool:
@@ -104,14 +110,14 @@ def _log_ws_subscriptions(kind: str, topics: Sequence[str]) -> None:
     preview = list(topics[:_SUBSCRIPTION_LOG_LIMIT])
     extra = len(topics) - len(preview)
     if extra > 0:
-        logger.info(
+        logger.debug(
             "BingX WS %s subscriptions: %s (+%d more)",
             kind,
             preview,
             extra,
         )
     else:
-        logger.info("BingX WS %s subscriptions: %s", kind, preview)
+        logger.debug("BingX WS %s subscriptions: %s", kind, preview)
 
 
 def _log_ws_payload_received(symbol: Symbol) -> None:
@@ -119,7 +125,7 @@ def _log_ws_payload_received(symbol: Symbol) -> None:
     if _WS_PAYLOAD_LOG_COUNT >= _WS_PAYLOAD_LOG_LIMIT:
         return
     _WS_PAYLOAD_LOG_COUNT += 1
-    logger.info("BingX WS payload received for %s", symbol)
+    logger.debug("BingX WS payload received for %s", symbol)
 
 
 def _log_first_ticker(symbol: Symbol, bid: float, ask: float) -> None:
@@ -129,7 +135,66 @@ def _log_first_ticker(symbol: Symbol, bid: float, ask: float) -> None:
     if target in _LOG_ONCE_TICKERS:
         return
     _LOG_ONCE_TICKERS.add(target)
-    logger.info("BingX first ticker for %s: bid=%s ask=%s", target, bid, ask)
+    logger.debug("BingX first ticker for %s: bid=%s ask=%s", target, bid, ask)
+
+
+async def _load_bingx_ws_symbol_map() -> dict[str, str]:
+    global _BINGX_WS_SYMBOL_CACHE, _BINGX_WS_SYMBOL_CACHE_TS
+
+    now = time.time()
+    cached = _BINGX_WS_SYMBOL_CACHE
+    if cached and (now - _BINGX_WS_SYMBOL_CACHE_TS) < _BINGX_WS_SYMBOL_CACHE_TTL:
+        return dict(cached)
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0, headers=BINGX_HEADERS) as client:
+            response = await client.get(BINGX_CONTRACTS_URL)
+            response.raise_for_status()
+            payload = response.json()
+    except Exception:
+        # Не кэшируем ошибку, чтобы можно было попробовать ещё раз при следующем запуске
+        raise
+
+    symbol_map: dict[str, str] = {}
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        data = []
+
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+
+        raw_symbol = (
+            item.get("symbol")
+            or item.get("contractSymbol")
+            or item.get("tradingPair")
+            or item.get("pair")
+            or item.get("contractId")
+            or item.get("name")
+        )
+        if not raw_symbol:
+            continue
+
+        normalized = _normalize_common_symbol(str(raw_symbol))
+        if not normalized:
+            continue
+
+        if not any(normalized.endswith(quote) for quote in ("USDT", "USDC", "USD", "BUSD", "FDUSD")):
+            continue
+
+        native = str(raw_symbol).upper().replace("_", "-")
+        if "-" not in native:
+            formatted = _to_bingx_ws_symbol(normalized)
+            if formatted:
+                native = formatted
+        symbol_map[normalized] = native
+
+    if symbol_map:
+        _BINGX_WS_SYMBOL_CACHE = symbol_map
+        _BINGX_WS_SYMBOL_CACHE_TS = now
+        logger.info("BingX REST discovered %d websocket symbols", len(symbol_map))
+
+    return dict(symbol_map)
 
 
 def _extract_price(item: dict, keys: Iterable[str]) -> float:
@@ -237,6 +302,16 @@ def _from_bingx_symbol(symbol: str | None) -> str | None:
 
 async def run_bingx(store: TickerStore, symbols: Sequence[Symbol]) -> None:
     # ИСПРАВЛЕНИЕ: Убираем логику 'subscribe_all', она была некорректной
+    try:
+        symbol_map = await _load_bingx_ws_symbol_map()
+    except Exception:
+        logger.exception("Failed to load BingX symbol map; aborting startup")
+        return
+
+    if not symbol_map:
+        logger.warning("BingX REST returned empty contract list; aborting startup")
+        return
+
     subscribe, _ = await _resolve_bingx_symbols(symbols)
 
     if not subscribe:
@@ -260,12 +335,18 @@ async def run_bingx(store: TickerStore, symbols: Sequence[Symbol]) -> None:
 
                 symbol_pairs: list[tuple[str, str]] = []
                 for sym in sorted(wanted_common):
-                    native = _to_bingx_ws_symbol(sym)
-                    
+                    native = symbol_map.get(sym)
+                    if not native:
+                        if symbol_map:
+                            logger.debug(
+                                "BingX skipping symbol absent in REST listing: %s", sym
+                            )
+                            continue
+                        native = _to_bingx_ws_symbol(sym)
                     # ИСПРАВЛЕНИЕ: Проверяем, что _to_bingx_ws_symbol вернул валидный символ
-                    if not native: 
+                    if not native:
                         continue
-                    
+
                     symbol_pairs.append((sym, native))
 
                 if not symbol_pairs:
@@ -279,7 +360,6 @@ async def run_bingx(store: TickerStore, symbols: Sequence[Symbol]) -> None:
                     store,
                     ticker_pairs=symbol_pairs,
                     depth_symbols=native_symbols,
-                    funding_symbols=native_symbols,
                     filter_symbols=wanted_common,
                 )
                 clients.append(client)
@@ -312,14 +392,12 @@ class _BingxWsClient:
         *,
         ticker_pairs: Sequence[tuple[str, str]],
         depth_symbols: Sequence[str],
-        funding_symbols: Sequence[str],
         filter_symbols: Iterable[str] | None,
     ) -> None:
         self.log = logger
         self._store = store
         self._ticker_pairs = list(ticker_pairs)
         self._depth_symbols = list(depth_symbols)
-        self._funding_symbols = list(funding_symbols)
         self._running = True
         self._ws: websockets.WebSocketClientProtocol | None = None
         self._rx_task: asyncio.Task | None = None
@@ -542,7 +620,7 @@ class _BingxWsClient:
                     "reqType": "sub",
                     "dataType": topic
                 }
-                self.log.info('BingX adding ticker sub -> %s (native=%s)', common, topic)
+                self.log.debug('BingX adding ticker sub -> %s (native=%s)', common, topic)
                 self._remember_sub(f'ticker:{normalized}', payload)
 
         # 2. Depth (Стаканы)
@@ -560,44 +638,21 @@ class _BingxWsClient:
                     "reqType": "sub",
                     "dataType": topic
                 }
-                self.log.info('BingX adding depth sub -> %s', topic)
+                self.log.debug('BingX adding depth sub -> %s', topic)
                 self._remember_sub(f'depth:{topic_symbol}', payload)
-
-        # 3. Funding (Фандинг)
-        if self._funding_symbols:
-            seen_funding: set[str] = set()
-            for sym in self._funding_symbols:
-                if not sym or sym.upper() == 'ALL': continue
-                topic_symbol = sym.replace('_', '-')
-                if topic_symbol in seen_funding: continue
-                seen_funding.add(topic_symbol)
-                
-                topic = f"{topic_symbol}@fundingRate"
-                payload = {
-                    "id": f"sub_funding_{topic_symbol}_{int(time.time())}",
-                    "reqType": "sub",
-                    "dataType": topic
-                }
-                self.log.info('BingX adding funding sub -> %s', topic)
-                self._remember_sub(f'funding:{topic_symbol}', payload)
-
 
     def _remember_sub(self, key: str, payload: Dict[str, Any]) -> None:
         self._active_subs[key] = payload
 
     def _log_raw_frame(self, raw: Any) -> None:
+        if not self.log.isEnabledFor(logging.DEBUG):
+            return
+
         if isinstance(raw, (bytes, bytearray)):
-            buf = bytes(raw[:512])
-            try:
-                text_preview = buf.decode('utf-8', 'replace')
-            except Exception:
-                text_preview = ''
-            if text_preview.strip():
-                self.log.debug('WS RX raw (first 512b): %s', text_preview)
-            else:
-                self.log.debug('WS RX raw (first 512b hex): %s', buf.hex())
-        else:
-            self.log.debug('WS RX raw (first 512b): %s', str(raw)[:512])
+            self.log.debug('WS RX raw frame (%d bytes)', len(raw))
+            return
+
+        self.log.debug('WS RX raw frame: %s', str(raw)[:512])
 
     def _maybe_gunzip(self, payload: Any) -> str:
         if isinstance(payload, (bytes, bytearray)):
@@ -670,24 +725,7 @@ class _BingxWsClient:
             
             # В v2 'dataType' содержит и тип, и символ (напр., "btc-usdt@ticker")
             # 'data' содержит сам payload
-            is_funding = 'fundingrate' in data_type
             is_depth = 'depth' in data_type
-            
-            if is_funding:
-                rate = _extract_price(
-                    payload,
-                    (
-                        'fundingRate', # 'f' в доках, но оставим старые ключи
-                        'funding_rate',
-                        'rate',
-                        'value',
-                    ),
-                )
-                interval = _parse_funding_interval(payload)
-                self._store.upsert_funding(
-                    'bingx', common_symbol, rate=rate, interval=interval, ts=now
-                )
-                continue
 
             if is_depth or (
                 isinstance(payload, dict)
@@ -845,7 +883,7 @@ def _iter_ws_payloads(
             continue
 
         common_symbol = _from_bingx_symbol(raw_symbol)
-        logger.info(
+        logger.debug(
             "WS PARSE exchange=%s native=%s -> common=%s",
             "bingx",
             raw_symbol,
@@ -997,15 +1035,6 @@ def _decode_ws_text(data: bytes) -> str | None:
         return data.decode('utf-8')
     except Exception:
         return None
-
-
-def _parse_funding_interval(payload: dict) -> str:
-    interval = payload.get("interval") or payload.get("fundingInterval")
-    if isinstance(interval, (int, float)) and interval > 0:
-        return f"{interval}h"
-    if isinstance(interval, str) and interval:
-        return interval
-    return "8h"
 
 
 def _iter_levels(source) -> Iterable[Tuple[float, float]]:
